@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Controle de Estoque</title>
+<style>
+body {
+  background-color: #000;
+  color: #00ffae;
+  font-family: monospace;
+  padding: 40px;
+}
+fieldset {
+  margin-top: 20px;
+  border: 1px solid #00ffae;
+  padding: 15px;
+}
+legend { color: #00ffaa; }
+input, textarea, button {
+  background: #000;
+  color: #00ffae;
+  border: 1px solid #00ffae;
+  padding: 5px;
+  margin-top: 5px;
+  width: 100%;
+}
+button:hover {
+  background: #003322;
+  cursor: pointer;
+}
+#console {
+  margin-top: 20px;
+  border: 1px solid #00ffae;
+  padding: 10px;
+  height: 350px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+.green { color: #00ff00; }
+.yellow { color: #ffff00; }
+.red { color: #ff4444; }
+.cyan { color: #00ffff; }
+</style>
+</head>
+<body>
+
+<h2>root@LAN:~$ Controle de Estoque</h2>
+
+<fieldset>
+<legend>📂 Upload da Base Lansweeper</legend>
+<form id="form-upload">
+  <input type="file" name="xlsx" accept=".xlsx" required>
+  <button type="submit">Enviar Base</button>
+</form>
+</fieldset>
+
+<fieldset>
+<legend>🧾 Bipagem de Equipamentos</legend>
+<input type="text" id="entrada" placeholder="Escaneie ou digite o Asset/Serial" autofocus autocomplete="off">
+<button id="btnSair">Sair / Gerar Relatório</button>
+</fieldset>
+
+<div id="console"></div>
+
+<script>
+const consoleDiv = document.getElementById("console");
+const entradaCampo = document.getElementById("entrada");
+
+// ==================================
+// Função de log no "terminal visual"
+// ==================================
+function log(msg, color="cyan") {
+  const span = document.createElement("div");
+  span.style.color = color;
+  span.textContent = msg;
+  consoleDiv.appendChild(span);
+  consoleDiv.scrollTop = consoleDiv.scrollHeight;
+}
+
+// ==================================
+// UPLOAD DE PLANILHA (com feedback)
+// ==================================
+document.getElementById("form-upload").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const formData = new FormData(e.target);
+  log("[ ... ] Enviando planilha de base...", "yellow");
+
+  try {
+    const res = await fetch("/upload_estoque", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.ok) {
+      log("[ OK ] " + data.msg, "lime");
+    } else {
+      log("[ X ] Falha: " + data.msg, "red");
+    }
+  } catch (err) {
+    log("[ X ] Erro ao enviar planilha: " + err, "red");
+  }
+});
+
+// ==================================
+// Função que envia uma entrada
+// ==================================
+async function enviarEntrada(entrada) {
+  if (!entrada.trim()) return;
+  const res = await fetch("/cmd", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ entrada })
+  });
+  const data = await res.json();
+  if (data.ok) {
+    const msg = data.output;
+    if (msg.includes("[ OK ]")) log(msg, "lime");
+    else if (msg.includes("[ ! ]")) log(msg, "yellow");
+    else if (msg.includes("[ X ]")) log(msg, "red");
+    else log(msg);
+  } else log(data.output, "red");
+}
+
+// ==================================
+// Enter automático (manual ou bipper)
+// ==================================
+entradaCampo.addEventListener("keypress", async (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const entrada = entradaCampo.value.trim();
+    entradaCampo.value = "";
+    await enviarEntrada(entrada);
+    entradaCampo.focus();
+  }
+});
+
+// ==================================
+// Suporte para múltiplas linhas (Ctrl+V)
+// ==================================
+entradaCampo.addEventListener("paste", async (e) => {
+  e.preventDefault();
+  const texto = (e.clipboardData || window.clipboardData).getData("text");
+  const entradas = texto.split(/\r?\n|[\s,;]/).map(x => x.trim()).filter(Boolean);
+  for (const entrada of entradas) {
+    await enviarEntrada(entrada);
+  }
+  entradaCampo.value = "";
+  entradaCampo.focus();
+});
+
+// ==================================
+// Gera relatório final
+// ==================================
+document.getElementById("btnSair").addEventListener("click", async () => {
+  log("[ ... ] Gerando relatório final...", "yellow");
+  const res = await fetch("/cmd", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ entrada: "sair" })
+  });
+
+  if (res.headers.get("content-type")?.includes("application/json")) {
+    const data = await res.json();
+    log(data.output, data.output.includes("[ X ]") ? "red" : "lime");
+  } else {
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const now = new Date().toISOString().slice(0,16).replace("T","_").replace(":","-");
+    a.download = `stock_${now}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    const faltantes = res.headers.get("X-Faltantes");
+    if (faltantes) {
+      log("\n--- RESULTADO FINAL ---", "cyan");
+      for (const linha of faltantes.split("|")) {
+        if (linha.includes("[ OK ]")) log(linha.trim(), "lime");
+        else if (linha.includes("[ ! ]")) log(linha.trim(), "yellow");
+        else if (linha.includes("[ X ]")) log(linha.trim(), "red");
+        else log(linha.trim(), "white");
+      }
+    }
+    log("[ OK ] Relatório de estoque baixado com sucesso.", "lime");
+  }
+});
+</script>
+
+</body>
+</html>

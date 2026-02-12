@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Gerador de Termos</title>
+<style>
+body { background-color: #000; color: #00ffae; font-family: monospace; padding: 40px; }
+label { display: block; margin-top: 10px; }
+input, select, button {
+  background: #000;
+  color: #00ffae;
+  border: 1px solid #00ffae;
+  padding: 5px;
+  margin-top: 5px;
+}
+button:hover { background: #003322; cursor: pointer; }
+#saida { margin-top: 15px; color: #00ffaa; white-space: pre-wrap; }
+fieldset { margin-top: 20px; border: 1px solid #00ffae; padding: 10px; }
+legend { color: #00ffaa; }
+</style>
+</head>
+<body>
+<h2>SD@ANBIMA:~$ Gerador de Termos</h2>
+
+<fieldset>
+<legend>Upload das Planilhas</legend>
+<form id="form-upload">
+  <label>ADMPReport.xlsx:</label>
+  <input type="file" name="admp" accept=".xlsx" required><br>
+  <label>lansweeper_export.xlsx:</label>
+  <input type="file" name="lansweeper" accept=".xlsx" required><br>
+  <button type="submit">Enviar Planilhas</button>
+</form>
+</fieldset>
+
+<fieldset>
+<legend>Geração de Termo</legend>
+<label>Tipo de termo:</label>
+<select id="tipo" onchange="toggleMotivo()">
+  <option value="entrega">Entrega</option>
+  <option value="devolucao">Devolução</option>
+</select>
+
+<div id="motivo-container" style="display:none;">
+  <label>Motivo da devolução:</label>
+  <select id="motivo">
+    <option value="">Selecione o motivo...</option>
+    <option value="troca">Troca de equipamento</option>
+    <option value="desligamento">Desligamento</option>
+  </select>
+</div>
+
+<label>Nome do usuário:</label>
+<input type="text" id="nome" placeholder="Ex: João Silva">
+
+<label>Serial do equipamento:</label>
+<input type="text" id="serial" placeholder="Ex: SN12345">
+
+<button onclick="gerar()">Gerar Termo</button>
+</fieldset>
+
+<pre id="saida"></pre>
+
+<script>
+function toggleMotivo(){
+  const tipo = document.getElementById('tipo').value;
+  document.getElementById('motivo-container').style.display =
+    (tipo === "devolucao") ? "block" : "none";
+}
+
+document.getElementById('form-upload').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  document.getElementById('saida').textContent = "Enviando planilhas...";
+  const res = await fetch("/upload", { method: "POST", body: formData });
+  const data = await res.json();
+  document.getElementById('saida').textContent = data.msg || "Erro ao enviar.";
+});
+
+async function gerar(){
+  const tipo = document.getElementById('tipo').value;
+  const motivo = (tipo === "devolucao") ? document.getElementById('motivo').value : null;
+  const nome = document.getElementById('nome').value.trim();
+  const serial = document.getElementById('serial').value.trim();
+
+  document.getElementById('saida').textContent = "Gerando termo...";
+
+  const res = await fetch("/gerar", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ tipo, motivo, nome, serial })
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    document.getElementById('saida').textContent = "Erro: " + err.msg;
+    return;
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+
+  let tipo_texto = (tipo === "entrega") ? "de_entrega" : "de_devolucao";
+  let nome_usuario = nome.replace(/ /g, "_");
+  a.download = `Termo_${tipo_texto}_${nome_usuario}.docx`;
+
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  document.getElementById('saida').textContent = "✅ Termo gerado com sucesso. Download iniciado.";
+}
+</script>
+</body>
+</html>

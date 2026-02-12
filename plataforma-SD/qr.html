@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Gerador de QR Codes</title>
+<style>
+body {
+  background-color: #000;
+  color: #00ffae;
+  font-family: monospace;
+  padding: 40px;
+}
+fieldset {
+  margin-top: 20px;
+  border: 1px solid #00ffae;
+  padding: 15px;
+}
+legend { color: #00ffaa; }
+input, button {
+  background: #000;
+  color: #00ffae;
+  border: 1px solid #00ffae;
+  padding: 5px;
+  margin-top: 5px;
+}
+button:hover { background: #003322; cursor: pointer; }
+#saida { margin-top: 15px; color: #00ffaa; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<h2>root@LAN:~$ Gerador de QR Codes</h2>
+
+<fieldset>
+<legend>📂 Upload do Arquivo</legend>
+<form id="form-qr">
+  <label>Arquivo TXT com Service Tags:</label><br>
+  <input type="file" name="arquivo" accept=".txt" required><br>
+  <button type="submit">Gerar QR Codes</button>
+</form>
+</fieldset>
+
+<pre id="saida"></pre>
+
+<script>
+document.getElementById("form-qr").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  document.getElementById("saida").textContent = "Gerando QR Codes...";
+  
+  const res = await fetch("/gerar_qr", { method: "POST", body: formData });
+  if (res.ok && res.headers.get("content-type").includes("application/zip")) {
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "qrcodes.zip";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    document.getElementById("saida").textContent = "✅ QR Codes gerados e baixados.";
+  } else {
+    const data = await res.json();
+    document.getElementById("saida").textContent = data.msg || "Erro ao gerar QR Codes.";
+  }
+});
+</script>
+
+</body>
+</html>
